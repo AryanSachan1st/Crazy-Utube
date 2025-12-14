@@ -4,7 +4,22 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 
-const registerUser = asyncHandler(async (req, res, next) => {
+const generateTokens = async (userId) => {
+    try {
+        const user = await User.findById(userId);
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+
+        user.refreshToken = refreshToken;
+        await user.save({validateBeforeSave: false})
+        return { accessToken, refreshToken };
+
+    } catch (error) {
+        throw new ApiError(500, "Tokens generation failed inside user.controller.js")
+    }
+}
+
+const registerUser = asyncHandler(async (req, res) => {
     // get the user details from req.body
     const {username, fullname, email, password} = req.body;
     // avatar and coverImage will be taken from 'req.files()'
@@ -13,7 +28,7 @@ const registerUser = asyncHandler(async (req, res, next) => {
     if (
         [username, fullname, email, password].some((field) => field?.trim() === "")
     ) {
-        throw new ApiError(400, "This field is required")
+        throw new ApiError(400, "Fill all required fields")
     }
 
     // check if user already exists through any unique field (email/username)
@@ -72,4 +87,79 @@ const registerUser = asyncHandler(async (req, res, next) => {
     );
 })
 
-export {registerUser}
+const loginUser = asyncHandler(async (req, res) => {
+    // get email/username and password from req.body
+    const {username, email, password} = req.body;
+
+    // validate required fields
+    if (!username && !email) {
+        throw new ApiError(400, "Enter username or password")
+    }
+    
+    // find user in database
+    const user = await User.findOne({ // this user do not have the tokens
+        $or: [{username}, {email}]
+    })
+
+    // if user does not exist -> return error
+    if (!user) {
+        throw new ApiError(404, "User doesn't exists, register new user!")
+    }
+
+    // Note: 'User' (model) can only access mongodb functions like .findOne(), etc. To access user-defined functions like .isPasswordCorrect() -> use the 'user'
+
+    // compare hashed password
+    const passMatched = await user.isPasswordCorrect(password)
+    if (!passMatched) {
+        throw new ApiError(401, "Invalid password, try again");
+    }
+
+    // generate access and refresh tokens
+    const { accessToken, refreshToken } = await generateTokens(user._id)
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
+
+    // set tokens in httpOnly cookies
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+    return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json( // this res.json() will send the response. It is the terminal object
+        new ApiResponse(200, {
+            user: loggedInUser,
+            accessToken,
+            refreshToken
+        }, "User LoggedIn Successfully")
+    )
+    // return user data (without password)
+})
+
+const logoutUser = asyncHandler(async (req, res) => { // just remove tokens and cookies
+    await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                refreshToken: undefined
+            }
+        },
+        {
+            new: true
+        }
+    )
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+    return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json (
+        new ApiResponse(200, {}, "User logged out successfully")
+    )
+})
+
+export {registerUser, loginUser, logoutUser}
