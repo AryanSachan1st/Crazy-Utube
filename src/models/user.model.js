@@ -45,10 +45,9 @@ const userSchema = mongoose.Schema({
 }, {timestamps: true})
 
 userSchema.pre("save", async function (next) { // hash the password before saving
-    if (!this.isModified("password")) return next(); 
+    if (!this.isModified("password")) return; 
 
     this.password = await bcrypt.hash(this.password, 10) // only hash the pass if there is a need of it (base case)
-    next()
 })
 
 userSchema.methods.isPasswordCorrect = async function(password) {

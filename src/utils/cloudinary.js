@@ -15,14 +15,15 @@ cloudinary.config({ // connect to our cloudinary account (with authentication)
 });
 
 // upload any file using custom wrapper
-const uploadOnCloudinary = async (fileLocalPath) => {
+const uploadOnCloudinary = async (fileLocalPath, fileName) => {
         try {
             if (!fileLocalPath) return null;
 
             const response = await cloudinary.uploader.upload(fileLocalPath, {
                 resource_type: "auto"
             })
-            console.log("File is uploaded in the cloudinary: ", response.url)
+            console.log(`${fileName} uploaded in the cloudinary: `, response.url)
+            fs.unlinkSync(fileLocalPath) // remove the locally stored temp file as the upload operation is successful
             return response
         } catch (error) {
             fs.unlinkSync(fileLocalPath) // remove the locally stored temp file as the upload operation got failed
