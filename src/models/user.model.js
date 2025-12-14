@@ -1,9 +1,9 @@
 import mongoose from "mongoose"
-import jwt from "jwt"
+import jwt from "jsonwebtoken"
 import bcrypt from "bcrypt"
 
 const userSchema = mongoose.Schema({
-    userName: {
+    username: {
         type: String,
         required: true,
         unique: true,
@@ -16,7 +16,7 @@ const userSchema = mongoose.Schema({
         unique: true,
         trim: true,
     },
-    fullName: {
+    fullname: {
         type: String,
         required: true,
         trim: true,
@@ -47,7 +47,7 @@ const userSchema = mongoose.Schema({
 userSchema.pre("save", async function (next) { // hash the password before saving
     if (!this.isModified("password")) return next(); 
 
-    this.password = bcrypt.hash(this.password, 10) // only hash the pass if there is a need of it (base case)
+    this.password = await bcrypt.hash(this.password, 10) // only hash the pass if there is a need of it (base case)
     next()
 })
 
