@@ -121,8 +121,10 @@ const loginUser = asyncHandler(async (req, res) => {
     // set tokens in httpOnly cookies
     const options = {
         httpOnly: true,
-        secure: true
-    }
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax"
+    };
+
     return res
     .status(200)
     .cookie("accessToken", accessToken, options)
@@ -131,9 +133,8 @@ const loginUser = asyncHandler(async (req, res) => {
         new ApiResponse(200, {
             user: loggedInUser,
             accessToken,
-            refreshToken
         }, "User LoggedIn Successfully")
-    )
+    )   
     // return user data (without password)
 })
 
