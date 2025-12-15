@@ -189,4 +189,129 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     }
 })
 
-export {registerUser, loginUser, logoutUser, refreshAccessToken}
+const changeCurrentPassword = asyncHandler(async (req, res) => { // loggedIn user want's to change their pass
+    const {oldPass, newPass} = req.body;
+    const user = await User.findById(req.user?._id)
+    if (!user) {
+        throw new ApiError(401, "User not found")
+    }
+    if (!await user.isPasswordCorrect(oldPass)) {
+        throw new ApiError(400, "Enter correct old password")
+    }
+    user.password = newPass;
+    await user.save({validateBeforeSave: false})
+
+    res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password changed successfully"))
+
+})
+
+const currentUser = asyncHandler(async (req, res) => {
+    return res
+    .status(200)
+    .json(200, req.user, "current user fetched successfully")
+})
+
+const createNewPassword = asyncHandler(async (req, res) => { // NOT-COMPLETED: loggedOut user forgets their pass & want to create new
+    // Note: OTP verification is must required to verify that the user is entering only their username/email
+    const {username, email, newPassword} = req.body;
+    if (!username && !email) {
+        throw new ApiError(400, "Provide atleast one of username or email");
+    }
+    const user = await User.findOne(
+        {
+            $or: [{username}, {email}]   
+        }
+    )
+    if (!user) {
+        throw new ApiError(400, "User with this username or email doesn't exist");
+    }
+    user.password = newPassword;
+    await user.save({validateBeforeSave: false})
+
+    res
+    .status(200)
+    .json(
+        new ApiResponse(200, {}, "Password changed successfully")
+    )
+})
+
+const updateAccountDetails = asyncHandler(async (req, res) => {
+    const {fullname, email} = req.body
+    if (!fullname && !email) {
+        throw new ApiError(400, "All fields are required")
+    }
+
+    const user = User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                fullname, email
+            }
+        },
+        {new: true}
+    ).select("-password -refreshToken")
+
+    return res
+    .status(200)
+    .json(new ApiResponse(200, user, "Account details updated successfully"))
+})
+
+const updateAvatar = asyncHandler(async (req, res) => {
+    const {newAvatarPath} = req.files?.path;
+    if (!newAvatarPath) {
+        throw new ApiError(400, "Please upload new Avatar")
+    }
+
+    const avatarCloudinaryStatus = await uploadOnCloudinary(newAvatarPath);
+    if (!avatarCloudinaryStatus.url) {
+        throw new ApiError(500, "Cloudinary upload for avatar failed")
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                avatar: avatarCloudinaryStatus.url // needs the pulbic img url (cloudinary)
+            }
+        },
+        {new: true}
+    )
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200, user, "Avatar changed successfully")
+    )
+})
+
+const updateCoverImage = asyncHandler(async (req, res) => {
+    const {newCoverPath} = req.files?.path;
+    if (!newCoverPath) {
+        throw new ApiError(400, "Please upload new Cover Image")
+    }
+
+    const coverCloudinaryStatus = await uploadOnCloudinary(newCoverPath);
+    if (!coverCloudinaryStatus.url) {
+        throw new ApiError(500, "Cloudinary upload for cover failed")
+    }
+
+    const user = await User.findByIdAndUpdate(
+        req.user?._id,
+        {
+            $set: {
+                coverImage: coverCloudinaryStatus.url // needs the pulbic img url (cloudinary)
+            }
+        },
+        {new: true}
+    )
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200, user, "Cover Image changed successfully")
+    )
+})
+
+export {registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, currentUser, createNewPassword, updateAccountDetails, updateAvatar, updateCoverImage}
