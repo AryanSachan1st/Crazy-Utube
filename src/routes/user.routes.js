@@ -16,7 +16,7 @@ router.route("/login").post(loginUser) // no middleware required
 // secured routes (using verifyJWT if required)
 router.route("/logout").post(verifyJWT, logoutUser) // verifyjwt to only logout already loggedIn user
 router.route("/refresh-token").post(refreshAccessToken)
-router.route("/change-password").post(verifyJWT, changeCurrentPassword)
+router.route("/change-password").patch(verifyJWT, changeCurrentPassword)
 router.route("/current-user").get(verifyJWT, currentUser)
 router.route("/update-userDetails").patch(verifyJWT, updateAccountDetails)
 router.route("/update-avatar").patch(verifyJWT, upload.single("avatar"), updateAvatar) // .patch(verify, multer to get the 'user.file', routeController)

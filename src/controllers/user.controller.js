@@ -5,9 +5,7 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
 import { cookieOptions } from "../constants.js";
-import { subscribe } from "diagnostics_channel";
 import mongoose from "mongoose";
-import { pipeline } from "stream";
 
 const generateTokens = async (userId) => {
     try {
@@ -141,8 +139,8 @@ const logoutUser = asyncHandler(async (req, res) => { // just remove tokens and 
     await User.findByIdAndUpdate(
         req.user?._id,
         {
-            $set: {
-                refreshToken: undefined
+            $unset: {
+                refreshToken: 1 // this unsets the field from the document
             }
         },
         {
@@ -159,13 +157,16 @@ const logoutUser = asyncHandler(async (req, res) => { // just remove tokens and 
 })
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
-    const incommingRT = req.cookie.refreshToken || req.body.refreshToken;
+    const incommingRT = req.cookies.refreshToken || req.body.refreshToken;
     if (!incommingRT) {
         throw new ApiError(401, "User's refresh token is null or undefined")
     }
 
     try {
         const decodedToken = jwt.verify(incommingRT, process.env.REFRESH_TOKEN_SECRET); // just to get the original payload
+        if (!decodedToken) {
+            throw new ApiError(400, "refresh token does not matched with the stored RT of this user")
+        }
     
         const user = await User.findById(decodedToken?._id);
         if (!user) {
@@ -213,7 +214,9 @@ const changeCurrentPassword = asyncHandler(async (req, res) => { // loggedIn use
 const currentUser = asyncHandler(async (req, res) => {
     return res
     .status(200)
-    .json(200, req.user, "current user fetched successfully")
+    .json(
+        new ApiResponse(200, req.user, "current user fetched successfully")
+    )
 })
 
 const createNewPassword = asyncHandler(async (req, res) => { // NOT-COMPLETED: loggedOut user forgets their pass & want to create new
@@ -246,7 +249,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
         throw new ApiError(400, "All fields are required")
     }
 
-    const user = User.findByIdAndUpdate(
+    const user = await User.findByIdAndUpdate(
         req.user?._id,
         {
             $set: {
@@ -262,12 +265,14 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
 })
 
 const updateAvatar = asyncHandler(async (req, res) => {
-    const {newAvatarPath} = req.files?.path;
-    if (!newAvatarPath) {
+    console.log(req.file);
+    if (!req.file?.path) {
         throw new ApiError(400, "Please upload new Avatar")
     }
+    const {newAvatarPath} = req.file?.path;
 
-    const avatarCloudinaryStatus = await uploadOnCloudinary(newAvatarPath);
+    const avatarCloudinaryStatus = await uploadOnCloudinary(newAvatarPath, req.file.fieldname);
+    console.log(avatarCloudinaryStatus)
     if (!avatarCloudinaryStatus.url) {
         throw new ApiError(500, "Cloudinary upload for avatar failed")
     }
@@ -323,7 +328,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         throw new ApiError(400, "username is missing")
     }
 
-    const channel = await User.aggregate( // [{}, {}, {}]
+    const channel = await User.aggregate( // [{pipeline1}, {pipeline2}, {pipeline3}]
         [
             {
                 $match: {
@@ -356,7 +361,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
                     },
                     isSubscribed: {
                         $cond: {
-                            if: {$in: [req.user?._id, "$subscribers.subscriber"]},
+                            if: {$in: [new mongoose.Types.ObjectId(req.user._id), "$subscribers.subscriber"]},
                             then: true,
                             else: false
                         }
@@ -378,7 +383,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         ]
     )
 
-    if (channel?.length) {
+    if (!channel?.length) {
         throw new ApiError(400, "channel not found")
     }
 

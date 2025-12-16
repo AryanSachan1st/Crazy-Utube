@@ -8,11 +8,20 @@ const verifyJWT = asyncHandler(async (req, res, next) => { // this will allow th
     try {
         const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "");
     
-        if (!token) {
-            throw new ApiError(401, "Unauthorized request")
+        if (!token || typeof token !== "string") {
+            throw new ApiError(401, "Access token missing or invalid")
         }
-    
-        const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+
+        let decodedToken;
+        try {
+            decodedToken = jwt.verify(
+                token,
+                process.env.ACCESS_TOKEN_SECRET
+            );
+        } catch (err) {
+            throw new ApiError(401, "Invalid or expired access token");
+        }
+        
         const user = await User.findById(decodedToken?._id).select("-password -refreshToken");
     
         if (!user) {
