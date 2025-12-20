@@ -24,3 +24,6 @@ app.use(cookieParser()) // cookies
 import userRouter from "./routes/user.routes.js" // we are giving manchaaha name 'userRouter' becz 'user.routes.js' is exporting 'default' router
 app.use("/api/v1/users", userRouter) // route is used like middleware >> app.use()
 // http://localhost:8000/api/v1/users/register
+
+import tweetRouter from "./routes/tweet.routes.js"
+app.use("/api/v1/tweets", tweetRouter)
