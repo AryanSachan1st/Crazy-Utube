@@ -1,6 +1,6 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js"
-import { User } from "../models/user.model.js";
+import { User } from "../models/user.model.js"
 import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
@@ -331,16 +331,16 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
     const channel = await User.aggregate( // [{pipeline1}, {pipeline2}, {pipeline3}]
         [
             {
-                $match: {
+                $match: { // find
                     username: username?.toLowerCase()
                 }
             },
             {
-                $lookup: {
+                $lookup: { // joins (left outer join)
                     from: "subscriptions",
                     localField: "_id",
                     foreignField: "channel",
-                    as: "subscribers"
+                    as: "subscribedUs"
                 }
             },
             {
@@ -352,16 +352,16 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
                 }
             },
             {
-                $addFields: {
+                $addFields: { // add more fields
                     subscriberCount: {
-                        $size: "$subscribers"
+                        $size: "$subscribedUs"
                     },
                     channelsSubscribedToCount: {
                         $size: "$subscribedTo"
                     },
                     isSubscribed: {
                         $cond: {
-                            if: {$in: [new mongoose.Types.ObjectId(req.user._id), "$subscribers.subscriber"]},
+                            if: {$in: [new mongoose.Types.ObjectId(req.user._id), "$subscribedUs.subscriber"]},
                             then: true,
                             else: false
                         }
@@ -369,7 +369,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
                 }
             },
             {
-                $project: { // which values to pass
+                $project: { // which values to display (1)
                     fullname: 1,
                     username: 1,
                     subscriberCount: 1,

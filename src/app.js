@@ -27,3 +27,18 @@ app.use("/api/v1/users", userRouter) // route is used like middleware >> app.use
 
 import tweetRouter from "./routes/tweet.routes.js"
 app.use("/api/v1/tweets", tweetRouter)
+
+import commentRouter from "./routes/comment.routes.js"
+app.use("/api/v1/comments", commentRouter)
+
+import likeRouter from "./routes/like.routes.js"
+app.use("/api/v1/likes", likeRouter)
+
+import videoRouter from "./routes/video.routes.js"
+app.use("/api/v1/videos", videoRouter)
+
+import playlistRouter from "./routes/playlist.routes.js"
+app.use("/api/v1/playlist", playlistRouter)
+
+import healthCheckRouter from "./routes/healthcheck.routes.js"
+app.use("/api/v1/healthCheck",healthCheckRouter )

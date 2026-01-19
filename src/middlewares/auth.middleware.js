@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js"
-import { User } from "../models/user.model.js";
+import { User } from "../models/User.model.js";
 
 // custom (middleware -> jaate hue milke jaana) used between the routes
 const verifyJWT = asyncHandler(async (req, res, next) => { // this will allow the main process only if the user is loggedIn
