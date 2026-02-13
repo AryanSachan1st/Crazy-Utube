@@ -2,6 +2,7 @@ import connectDB from "./db/index.js"
 import dotenv from "dotenv"
 import {app} from "./app.js"
 
+// index -> db + app
 dotenv.config({
     path: "./.env"
 })
@@ -15,7 +16,4 @@ connectDB()
         console.error(`Server error >> ${error}`);
     })
 })
-.catch((error) => {
-    console.error("MongoDB connection failed >> ", error);
-    process.exit(1);
-})
+// no use of .catch() because the error is already handled in connectDB.

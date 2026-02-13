@@ -67,7 +67,7 @@ const registerUser = asyncHandler(async (req, res) => {
     // create user object in db
     const user = await User.create({
         fullname, 
-        avatar: avatarStatus?.url || "",
+        avatar: avatarStatus?.url,
         coverImage: coverImageStatus?.url || "",
         email,
         password,
@@ -157,7 +157,7 @@ const logoutUser = asyncHandler(async (req, res) => { // just remove tokens and 
 })
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
-    const incommingRT = req.cookies.refreshToken || req.body.refreshToken;
+    const incommingRT = req.cookies.refreshToken || req.header("Authorization")?.replace("Bearer ", "");
     if (!incommingRT) {
         throw new ApiError(401, "User's refresh token is null or undefined")
     }
@@ -173,6 +173,22 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
             throw new ApiError(401, "Invalid refresh token");
         }
     
+        // -----------------------------------------------------------------------
+        // REFRESH TOKEN SECURITY CHECK:
+        // This check ensures that the incoming token matches the one currently stored 
+        // in the database for this user. This is critical for:
+        // 
+        // 1. Preventing Token Reuse (Replay Attacks):
+        //    - When a token is refreshed/used, a NEW token is saved to the DB.
+        //    - If a hacker tries to use the OLD (already used) token, it won't match
+        //      the new one in the DB, and the request is rejected.
+        // 
+        // 2. Handling Multiple Logins (Single Session Policy):
+        //    - If User logs in on Device A, DB has Token A.
+        //    - If User logs in on Device B, DB is overwritten with Token B.
+        //    - Device A's Token A is now invalid because it doesn't match Token B.
+        //    - Result: Only the most recent device stays logged in.
+        // -----------------------------------------------------------------------
         if (incommingRT !== user?.refreshToken) {
             throw new ApiError(401, "Refresh token is expired or used")
         }
@@ -181,8 +197,8 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     
         return res
         .status(200)
-        .cookie("accessToken", cookieOptions)
-        .cookie("refreshToken", cookieOptions)
+        .cookie("accessToken", accessToken, cookieOptions)
+        .cookie("refreshToken", refreshToken, cookieOptions)
         .json (
             new ApiResponse(
                 200, { accessToken, refreshToken }, "Access Token refreshed successfully"
@@ -219,41 +235,62 @@ const currentUser = asyncHandler(async (req, res) => {
     )
 })
 
-const createNewPassword = asyncHandler(async (req, res) => { // NOT-COMPLETED: loggedOut user forgets their pass & want to create new
-    // Note: OTP verification is must required to verify that the user is entering only their username/email
-    const {username, email, newPassword} = req.body;
-    if (!username && !email) {
-        throw new ApiError(400, "Provide atleast one of username or email");
-    }
-    const user = await User.findOne(
-        {
-            $or: [{username}, {email}]   
-        }
-    )
-    if (!user) {
-        throw new ApiError(400, "User with this username or email doesn't exist");
-    }
-    user.password = newPassword;
-    await user.save({validateBeforeSave: false})
+const createNewPassword = asyncHandler(async (req, res) => { // otp verification of the requested username is pending to authenticate whether the actual user is trying to change the password
+    const {userName, email, new_password} = req.body;
 
-    res
-    .status(200)
-    .json(
-        new ApiResponse(200, {}, "Password changed successfully")
+    if (!userName && !email) {
+        throw new ApiError(400, "Enter atleast one of the username or email")
+    }
+
+    const user = await User.find(
+        { $or: [{ userName }, { email }] }
     )
+
+    if (!user) {
+        throw new ApiError(400, "User doesn't exists")
+    }
+
+    user.password = new_password // mongoDB's 'pre' hook will handle the encryption
+    
+    const display_user = await User.findById(user._id).select("-refreshToken -password")
+
+    res.status(201).json(
+        new ApiResponse(201, display_user, "Password changed successfully")
+    )
+
 })
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
-    const {fullname, email} = req.body
+    const {username, fullname, email} = req.body
     if (!fullname && !email) {
         throw new ApiError(400, "All fields are required")
+    }
+
+    if (!req.file?.avatar[0]?.path) {
+        throw new ApiError(400, "Please upload new Avatar")
+    }
+
+    const avatar_local_path = req.files?.avatar[0]?.path
+    const avatar_name = req.files?.avatar[0]?.fieldname
+
+    const coverImage_local_path = req.files?.coverImage[0]?.path
+    const coverImage_name = req.files?.coverImage[0]?.fieldname
+
+    const cloudinary_avatar_response = await uploadOnCloudinary(avatar_local_path, avatar_name)
+    let cloudinary_coverImage_response = ""
+    if (coverImage_local_path) {
+        cloudinary_coverImage_response = await uploadOnCloudinary(coverImage_local_path, coverImage_name)
     }
 
     const user = await User.findByIdAndUpdate(
         req.user?._id,
         {
             $set: {
-                fullname, email
+                username: username,
+                fullname: fullname,
+                email: email,
+                avatar: cloudinary_avatar_response?.url || "",
+                coverImage: cloudinary_coverImage_response?.url || ""
             }
         },
         {new: true}
@@ -262,64 +299,6 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
     return res
     .status(200)
     .json(new ApiResponse(200, user, "Account details updated successfully"))
-})
-
-const updateAvatar = asyncHandler(async (req, res) => {
-    console.log(req.file);
-    if (!req.file?.path) {
-        throw new ApiError(400, "Please upload new Avatar")
-    }
-    const {newAvatarPath} = req.file?.path;
-
-    const avatarCloudinaryStatus = await uploadOnCloudinary(newAvatarPath, req.file.fieldname);
-    console.log(avatarCloudinaryStatus)
-    if (!avatarCloudinaryStatus.url) {
-        throw new ApiError(500, "Cloudinary upload for avatar failed")
-    }
-
-    const user = await User.findByIdAndUpdate(
-        req.user?._id,
-        {
-            $set: {
-                avatar: avatarCloudinaryStatus.url // needs the pulbic img url (cloudinary)
-            }
-        },
-        {new: true}
-    )
-
-    return res
-    .status(200)
-    .json(
-        new ApiResponse(200, user, "Avatar changed successfully")
-    )
-})
-
-const updateCoverImage = asyncHandler(async (req, res) => {
-    const {newCoverPath} = req.files?.path;
-    if (!newCoverPath) {
-        throw new ApiError(400, "Please upload new Cover Image")
-    }
-
-    const coverCloudinaryStatus = await uploadOnCloudinary(newCoverPath);
-    if (!coverCloudinaryStatus.url) {
-        throw new ApiError(500, "Cloudinary upload for cover failed")
-    }
-
-    const user = await User.findByIdAndUpdate(
-        req.user?._id,
-        {
-            $set: {
-                coverImage: coverCloudinaryStatus.url // needs the pulbic img url (cloudinary)
-            }
-        },
-        {new: true}
-    )
-
-    return res
-    .status(200)
-    .json(
-        new ApiResponse(200, user, "Cover Image changed successfully")
-    )
 })
 
 const getUserChannelProfile = asyncHandler(async (req, res) => {
@@ -339,7 +318,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
                 $lookup: { // joins (left outer join)
                     from: "subscriptions",
                     localField: "_id",
-                    foreignField: "channel",
+                    foreignField: "channel", // jahan x2 channel me mere channel ka naam hai  
                     as: "subscribedUs"
                 }
             },
@@ -347,7 +326,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
                 $lookup: {
                     from: "subscriptions",
                     localField: "_id",
-                    foreignField: "subscriber",
+                    foreignField: "subscriber", // jahan x2 subscriber me mere channel ka naam hai
                     as: "subscribedTo"
                 }
             },
@@ -396,27 +375,34 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
     )
 })
 
+// 1st (user(local collection) --> video(target collection)), then for every video (video(local collection) --> user/owner(target collection))
 const getWatchHistory = asyncHandler(async (req, res) => {
     const user = await User.aggregate(
-        [
+        [ // a lot of videos in the user's watchHistory -> []
             {
+                // Step 1 - Match the loggedIn User
                 $match: {
-                    _id: new mongoose.Types.ObjectId(req.user?._id)
+                    _id: new mongoose.Types.ObjectId(req.user?._id) // for that user
                 }
             },
             {
+                // Step 2 - Replace the 'watchHistory' array of video IDs with actual Video documents. (recurrsive -> 1 complete video (owner's profile))
                 $lookup: {
-                    from: "videos",
-                    localField: "watchHistory",
-                    foreignField: "_id",
-                    as: "watchHistory",
+                    from: "videos", // from videos collection (in terms of _id)
+                    localField: "watchHistory", // Field in User model: watchHistory (array of ObjectId)
+                    foreignField: "_id", // Field in Video model: _id
+                    as: "watchHistory", // save here as watchHistory - Output field name
+
+                    // Step 3 - We run this sub-pipeline on the *videos* we just found - Inside each video, find the user who uploaded it.
                     pipeline: [
                         {
-                            $lookup: {
-                                from: "users",
-                                localField: "owner",
-                                foreignField: "_id",
-                                as: "owner",
+                            $lookup: { // each video has an owner
+                                from: "users", // Target collection: users
+                                localField: "owner", // Field in Video model: owner
+                                foreignField: "_id", // Field in User model: _id
+                                as: "owner", // Output field: owner (initially an array)
+
+                                // Step 4 - Selective display of owner's profile
                                 pipeline: [
                                     {
                                         $project: {
@@ -428,7 +414,11 @@ const getWatchHistory = asyncHandler(async (req, res) => {
                                 ]
                             }
                         },
-                        { // directly giving owner JSON from newly overwritten owner[]
+
+                        // Step 5 - FLATTEN OWNER ARRAY (a common pattern) - 
+                        /* $lookup returns an array (e.g., owner: [{name: "Ayran"}]). This converts it to a single object (e.g., owner: {name: "Ayran"}).
+                        */
+                        {
                             $addFields: {
                                 owner: {
                                     $first: "$owner"

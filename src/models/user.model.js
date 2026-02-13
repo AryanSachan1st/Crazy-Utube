@@ -45,9 +45,10 @@ const userSchema = mongoose.Schema({
 }, {timestamps: true})
 
 userSchema.pre("save", async function (next) { // hash the password before saving
-    if (!this.isModified("password")) return; 
+    if (!this.isModified("password")) return;
 
-    this.password = await bcrypt.hash(this.password, 10) // only hash the pass if there is a need of it (base case)
+    this.password = bcrypt.hash(this.password, 10) // only hash the pass if there is a need of it (base case)
+ // only hash the pass if there is a need of it (base case)
 })
 
 userSchema.methods.isPasswordCorrect = async function(password) {
@@ -59,8 +60,8 @@ userSchema.methods.generateAccessToken = function() {
         {
             _id: this._id,
             email: this.email,
-            userName: this.userName,
-            fullName: this.fullName
+            username: this.username,
+            fullname: this.fullname
         },
         process.env.ACCESS_TOKEN_SECRET,
         {

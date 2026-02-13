@@ -2,6 +2,10 @@ import multer from "multer"
 import path from "path";
 import { fileURLToPath } from "url";
 
+/*
+Error handling in multer-
+Multer detects error -> calls next(err) internally -> Global Error Handler.
+*/
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
