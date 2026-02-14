@@ -80,31 +80,24 @@ const getChannelSubscribers = asyncHandler(async (req, res) => {
     )
 })
 const getSubscribedChannels = asyncHandler(async (req, res) => {
-    // 1. Get userId from params
-    const { userId } = req.params
-    // 2. Validate userId
-    if (!userId) {
-        throw new ApiError(400, "Provide a user id in the URL")
-    }
-    if (!mongoose.isValidObjectId(userId)) {
-        throw new ApiError(400, "Invalid user id")
-    }
-    // 3. Check if user exists
-    if (!await User.findOne({_id: userId})) {
-        throw new ApiError(404, "User with given user id doesn't exists")
-    }
+    // 1. Get user_id from the authenticated user
+    const user_id = req.user?._id
 
-    // 4. Find channels subscribed by the user
-    const channelsSubscribed = await Subscription.find(
-        {subscriber: userId},
-        {channel: 1, _id: 0}
-    )
-    
-    // 5. Return subscribed channels list
-    return res
-    .status(200)
-    .json(
-        new ApiResponse(200, channelsSubscribed, "Fetched all channels subscribed")
+    // 2. Find channels the user is subscribed to
+    const channels = await Subscription.find(
+        { subscriber: user_id }
+    ).limit(5) // Optional: limit results for pagination
+
+    // 3. Calculate total number of subscribed channels
+    const total_channels = await Subscription.countDocuments({ subscriber: user_id })
+
+    // 4. Return the list of channels and the total count
+    return res.status(200).json(
+        new ApiResponse(200, {
+            user_id: user_id,
+            channels: channels, // List of subscriptions
+            total_channels: total_channels // Total count
+        }, "Fetched all channels whom you subscribe")
     )
 })
 
