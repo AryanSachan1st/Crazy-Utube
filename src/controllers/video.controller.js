@@ -48,12 +48,15 @@ const getAllVideos = asyncHandler(async (req, res) => { // important
     )
 })
 const publishVideo = asyncHandler(async (req, res) => {
+    // 1. Get title and description from request body
     const { title, desc } = req.body
     const user_id = req.user?._id
 
+    // 2. Get video and thumbnail files from request files
     const video_file = req.files?.videoFile[0]
     const thumbnail_file = req.files?.thumbnail[0]
 
+    // 3. Validate title and video file
     if (!title) {
         throw new ApiError(400, "Enter a title for your video")
     }
@@ -62,6 +65,7 @@ const publishVideo = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Please upload a video file")
     }
 
+    // 4. Upload files to Cloudinary
     const cloudinary_video_file = await uploadOnCloudinary(video_file?.path, video_file?.fieldname)
     const cloudinary_thumbnail_file = await uploadOnCloudinary(thumbnail_file?.path, thumbnail_file?.fieldname)
 
@@ -69,6 +73,7 @@ const publishVideo = asyncHandler(async (req, res) => {
         throw new ApiError(500, "Can't upload video on cloud")
     }
 
+    // 5. Create video entry in database
     const video = await Video.create(
         {
             title: title,
@@ -86,33 +91,45 @@ const publishVideo = asyncHandler(async (req, res) => {
     If create fails, the code stops at that line and jumps to the error handler.
     If create succeeds, video is guaranteed to be an object.
     */
+    
+    // 6. Return response
     return res.status(201).json(
         new ApiResponse(200, video, "Video published successfully")
     )
 })
+
 const getVideoById = asyncHandler(async (req, res) => {
-    const { video_id } = req.params
+    // 1. Get videoId from params
+    const { videoId } = req.params
+    // formerly video_id, must match route /:videoId
     
-    if (!mongoose.isValidObjectId( video_id )) {
+    // 2. Validate videoId
+    if (!mongoose.isValidObjectId( videoId )) {
         throw new ApiError(400, "Invalid video id")
     }
 
-    const video = await Video.findById(video_id)
+    // 3. Find video by id
+    const video = await Video.findById(videoId)
     
     if (!video) {
         throw new ApiError(404, "Video doesn't exists")
     }
 
+    // 4. Return response
     return res.status(200).json(
         new ApiResponse(200, video, "Video fetched sucessfully")
     )
 
 })
+
 const updateVideo = asyncHandler(async (req, res) => {
-    const { user_id } = req.user?._id
+    // 1. Get user_id, title, desc, and videoId
+    // const { user_id } = req.user?._id // This was attempting to destructure property user_id from the _id object
+    const user_id = req.user?._id
     const { title, desc } = req.body
-    const { video_id } = req.params
+    const { videoId } = req.params
     
+    // 2. Validate input
     if (!title) {
         throw new ApiError(400, "Title can't be empty")
     }
@@ -122,15 +139,17 @@ const updateVideo = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Upload a thumbnail")
     }
 
+    // 3. Upload new thumbnail to Cloudinary
     const cloudinary_thumbnail_file = uploadOnCloudinary(thumbnail_file?.path, thumbnail_file?.fieldname)
 
     if (!cloudinary_thumbnail_file || !cloudinary_thumbnail_file?.url) {
         throw new ApiError(500, "Can't upload thumbnail to cloud")
     }
 
+    // 4. Update video details (only if owner matches)
     const updated_video = await Video.findOneAndUpdate(
         {
-            _id: video_id,
+            _id: videoId,
             owner: user_id
         },
         {
@@ -146,21 +165,26 @@ const updateVideo = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Either video doesn't exists or you are not authorized to edit this video")
     }
 
+    // 5. Return updated video
     return res.status(200).json(
         new ApiResponse(200, updated_video, "Video updated successfully")
     )
 })
+
 const deleteVideo = asyncHandler(async (req, res) => {
-    const { video_id } = req.params
+    // 1. Get videoId from params
+    const { videoId } = req.params
     const user_id = req.user?._id
 
-    if (!mongoose.isValidObjectId(video_id)) {
+    // 2. Validate videoId
+    if (!mongoose.isValidObjectId(videoId)) {
         throw new ApiError(400, "Invalid video id")
     }
 
+    // 3. Delete video (only if owner matches)
     const deleted_video = await Video.findOneAndDelete(
         {
-            _id: video_id,
+            _id: videoId,
             owner: user_id
         }
     )
@@ -169,39 +193,40 @@ const deleteVideo = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Either video doesn't exists or you are not authorized to delete this video")
     }
 
+    // 4. Return success response
     return res.status(200).json(
-        new ApiResponse(200, deleted_video, `Video with id: ${video_id} deleted successfully`)
+        new ApiResponse(200, deleted_video, `Video with id: ${videoId} deleted successfully`)
     )
 })
+
 const togglePublishStatus = asyncHandler(async (req, res) => {
-    const { video_id } = req.params
+    // 1. Get videoId from params
+    const { videoId } = req.params
     const user_id = req.user?._id
 
-    if (!mongoose.isValidObjectId( video_id )) {
+    if (!mongoose.isValidObjectId( videoId )) {
         throw new ApiError(400, "Invalid video id")
     }
 
-    const toggled_video = await Video.findOneAndUpdate(
-        {
-            _id: video_id,
-            owner: user_id
-        },
-        {
-            $set: {
-                isPublished: !isPublished
-            }
-        },
-        {new: true}
-    )
+    // 2. Find the video first (ensure ownership)
+    const video = await Video.findOne({
+        _id: videoId,
+        owner: user_id
+    })
 
-    if (!togglePublishStatus) {
-        throw new ApiError(400, "Either video doesn't exists or you are not authorized to update this video")
+    if (!video) {
+         throw new ApiError(404, "Video not found or unauthorized")
     }
 
+    // 3. Toggle the status
+    video.isPublished = !video.isPublished
+    await video.save({ validateBeforeSave: false })
+
+    // 4. Return new status
     return res.status(200).json(
         new ApiResponse(200, {
-            video_id: togglePublishStatus._id,
-            isPublished: togglePublishStatus.isPublished
+            videoId: video._id,
+            isPublished: video.isPublished
         }, "Published status changed successfully")
     )
 })
