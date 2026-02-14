@@ -1,118 +1,203 @@
-import mongoose from "mongoose";
-import { ApiError } from "../utils/ApiError";
-import { ApiResponse } from "../utils/ApiResponse"
-import { asyncHandler } from "../utils/asyncHandler";
-import { Video } from "../models/video.model"
-import { Tweet } from "../models/tweet.model"
-import { Comment } from "../models/comment.model"
-import { Like } from "../models/like.model"
+import mongoose, { isValidObjectId, mongo } from "mongoose"
+import { Like } from "../models/like.model.js"
+import { ApiError } from "../utils/ApiError.js"
+import { ApiResponse } from "../utils/ApiResponse.js"
+import { asyncHandler } from "../utils/asyncHandler.js"
 
 const toggleVideoLike = asyncHandler(async (req, res) => {
+    // 1. Get videoId from params
     const { videoId } = req.params
-    const userId = req.user?._id
 
-    if (!videoId) {
-        throw new ApiError(400, "Provide the video id in the URL")
-    }
-    if (mongoose.isValidObjectId(videoId)) {
-        throw new ApiError(400, "Invalid video id")
-    }
-    const video = await Video.findOne(
-        {_id: videoId}
-    )
-    if (!video) {
-        throw new ApiError(400, "Video doesn't exists for this video id")
+    // 2. Validate videoId
+    if (!isValidObjectId(videoId)) {
+        throw new ApiError(400, "Invalid videoID")
     }
 
-    const like = await Like.create(
-        {
-            video: videoId,
-            likedBy: userId
-        }
-    )
+    // 3. Check if the user already liked the video
+    const likedAlready = await Like.findOne({
+        video: videoId,
+        likedBy: req.user?._id,
+    })
 
+    // 4. If liked, unlike it (delete document)
+    if (likedAlready) {
+        await Like.findByIdAndDelete(likedAlready?._id)
+
+        return res
+            .status(200)
+            .json(new ApiResponse(200, { isLiked: false }, "Unliked successfully"))
+    }
+
+    // 5. If not liked, like it (create document)
+    await Like.create({
+        video: videoId,
+        likedBy: req.user?._id,
+    })
+
+    // 6. Return success response
     return res
-    .status(201)
-    .json(
-        new ApiResponse(201, like, "Liked the video successfully")
-    )
+        .status(200)
+        .json(new ApiResponse(200, { isLiked: true }, "Liked successfully"))
 })
-const toggleTweetLike = asyncHandler(async (req, res) => {
-    const { tweetId } = req.params
-    const userId = req.user?._id
 
-    if (!tweetId) {
-        throw new ApiError(400, "Provide the tweet id in the URL")
+const toggleCommentLike = asyncHandler(async (req, res) => {
+    // 1. Get commentId from params
+    const { commentId } = req.params
+
+    // 2. Validate commentId
+    if (!isValidObjectId(commentId)) {
+        throw new ApiError(400, "Invalid commentID")
     }
-    if (mongoose.isValidObjectId(tweetId)) {
+
+    // 3. Check if the user already liked the comment
+    const likedAlready = await Like.findOne({
+        comment: commentId,
+        likedBy: req.user?._id,
+    })
+
+    // 4. If liked, unlike it
+    if (likedAlready) {
+        await Like.findByIdAndDelete(likedAlready?._id)
+
+        return res
+            .status(200)
+            .json(new ApiResponse(200, { isLiked: false }, "Unliked successfully"))
+    }
+
+    // 5. If not liked, like it
+    await Like.create({
+        comment: commentId,
+        likedBy: req.user?._id,
+    })
+
+    // 6. Return success response
+    return res
+        .status(200)
+        .json(new ApiResponse(200, { isLiked: true }, "Liked successfully"))
+})
+
+const toggleTweetLike = asyncHandler(async (req, res) => {
+    // 1. Get user id and tweet id
+    const user_id = req.user?._id
+    const { tweet_id } = req.params
+
+    // 2. Validate tweet_id
+    if (!mongoose.isValidObjectId(tweet_id)) {
         throw new ApiError(400, "Invalid tweet id")
     }
-    const tweet = await Tweet.findOne(
-        {_id: tweetId}
-    )
-    if (!tweet) {
-        throw new ApiError(400, "Tweet doesn't exists for this tweet id")
-    }
 
-    const like = await Like.create(
+    // 3. Check if user already liked the tweet
+    const likedAlready_tweet = await Like.findOne(
         {
-            video: tweetId,
-            likedBy: userId
+            tweet: tweet_id,
+            likedBy: user_id
         }
     )
 
-    return res
-    .status(201)
-    .json(
-        new ApiResponse(201, like, "Liked the Tweet successfully")
-    )
-})
-const toggleCommentLike = asyncHandler(async (req, res) => {
-    const { commentId } = req.params
-    const userId = req.user?._id
+    // 4. If liked, unlike it
+    if (likedAlready_tweet) {
+        const tweet = await Like.findByIdAndDelete(likedAlready_tweet?._id)
 
-    if (!commentId) {
-        throw new ApiError(400, "Provide the comment id in the URL")
-    }
-    if (mongoose.isValidObjectId(commentId)) {
-        throw new ApiError(400, "Invalid Comment id")
-    }
-    const comment = await Comment.findOne(
-        {_id: commentId}
-    )
-    if (!comment) {
-        throw new ApiError(400, "Comment doesn't exists for this comment id")
+        return res.status(200).json(
+            new ApiResponse(200, {}, "Tweet Like removed successfully")
+        )
     }
 
-    const like = await Like.create(
+    // 5. If not liked, like it
+    const tweet_like = await Like.create(
         {
-            video: commentId,
-            likedBy: userId
+            tweet: tweet_id,
+            likedBy: user_id
         }
     )
 
-    return res
-    .status(201)
-    .json(
-        new ApiResponse(201, like, "Liked the comment successfully")
+    // 6. Return success response
+    return res.status(201).json(
+        new ApiResponse(201, tweet_like, "Tweet Liked successfully")
     )
 })
+
 const getLikedVideos = asyncHandler(async (req, res) => {
-    const userId = req.user?._id
-    
-    const likedVideos = await Like.find(
+    const likedVideos = await Like.aggregate([
         {
-            likedBy: userId,
-            video: {$ne: null}
+            $match: {
+                // 1. Filter likes by the current user's ID
+                likedBy: new mongoose.Types.ObjectId(req.user?._id),
+                // 2. Ensure we only get likes associated with videos (not comments or tweets)
+                //    'video' field must exist and not be null
+                video: { $exists: true, $ne: null }
+            }
         },
-        {video: 1}
-    ).limit(5)
+        {
+            $lookup: {
+                // 3. Join with the 'videos' collection to get video details
+                from: "videos",
+                localField: "video",      // Field in 'Like' schema
+                foreignField: "_id",      // Field in 'Video' schema
+                as: "likedVideo",         // Result will be an array of video documents
+                pipeline: [
+                    {
+                        $lookup: {
+                            // 4. Nested lookup to get the owner (user) details for each video
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [
+                                {
+                                    $project: {
+                                        // 5. Select only specific fields for the owner
+                                        fullName: 1,
+                                        username: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $addFields: {
+                            // 6. 'owner' from lookup is an array (e.g., [{...}]), take the first element
+                            owner: {
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            $addFields: {
+                // 7. 'likedVideo' from lookup is an array, take the first element to make it an object
+                likedVideo: {
+                    $first: "$likedVideo"
+                }
+            }
+        },
+        {
+            $match: {
+                // 8. Filter out any documents where 'likedVideo' does not exist
+                //    This handles cases where the video might have been deleted but the like remains
+                likedVideo: { $exists: true }
+            }
+        }
+    ])
 
     return res
-    .status(200)
-    .json(
-        new ApiResponse(200, likedVideos, "Fetched liked videos")
-    )
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                likedVideos,
+                "Liked videos fetched successfully"
+            )
+        )
+
 })
 
-export { toggleCommentLike, toggleTweetLike, toggleVideoLike, getLikedVideos }
+export {
+    toggleCommentLike,
+    toggleTweetLike,
+    toggleVideoLike,
+    getLikedVideos
+}
