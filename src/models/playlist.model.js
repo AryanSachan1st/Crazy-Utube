@@ -1,4 +1,4 @@
-import mongoose from "mongoose"
+import mongoose, { trusted } from "mongoose"
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2"
 
 const playlistSchema = new mongoose.Schema(
@@ -9,11 +9,11 @@ const playlistSchema = new mongoose.Schema(
         },
         desc: {
             type: String,
-            required: true
         },
         owner: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "User"
+            ref: "User",
+            required: true
         },
         videos: [
             {
