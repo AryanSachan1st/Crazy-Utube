@@ -62,21 +62,27 @@ Summary of the Error Flow-
 app.js.
 4. Global Handler: Formats the error and sends a clean JSON response to the client.
 */
+// Current src/app.js (lines 65-82)
 app.use((err, req, res, next) => {
-    // Determine the status code
-    const statusCode = err.statusCode || 500;
+    let statusCode = err.statusCode || 500;
+    let message = err.message || "Internal Server Error";
     
-    // Determine the error message
-    const message = err.message || "Internal Server Error";
-    
-    // Determine any additional error details
-    const errors = err.errors || [];
+    // checks for specific Mongoose errors
+    if (err.name === "CastError") {
+        message = "Resource not found. Invalid ID";
+        statusCode = 400;
+    } else if (err.code === 11000) {
+        message = "Duplicate field value entered";
+        statusCode = 400;
+    } else if (err.name === "ValidationError") {
+        message = Object.values(err.errors).map(val => val.message).join(", ");
+        statusCode = 400;
+    }
 
-    // Send the JSON response
     res.status(statusCode).json({
         success: false,
         message,
-        errors,
-        // stack: err.stack // Uncomment to see stack trace in response
+        errors: err.errors || [],
+        // stack: err.stack
     });
 });
