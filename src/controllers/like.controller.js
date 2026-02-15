@@ -144,7 +144,7 @@ PIPELINE V/S STAGE-
 Pipeline = The Whole Process (The entire Array [...])
 Stage = A Single Step (One Object { ... } inside that Array)
 */
-const getLikedVideos = asyncHandler(async (req, res) => {
+const getLikedVideos = asyncHandler(async (req, res) => { // likes -> videos -> user
     const likedVideos = await Like.aggregate([
         {
             $match: {
@@ -209,6 +209,61 @@ const getLikedVideos = asyncHandler(async (req, res) => {
             }
         }
     ])
+
+    // const getLikedVideos = await Like.aggregate([ // just for revision
+    //     {
+    //         $match: {
+    //             likedBy: mongoose.Types.ObjectId(req.user?._id),
+    //             video: { $exists: true, $ne: null }
+    //         }
+    //     },
+    //     {
+    //         $lookup: {
+    //             from: "videos",
+    //             foreignField: "_id",
+    //             localField: "video",
+    //             as: "likedVideo",
+    //             pipeline: [
+    //                 {
+    //                     $lookup: {
+    //                         from: "users",
+    //                         foreignField: "_id",
+    //                         localField: "owner",
+    //                         as: "owner",
+    //                         pipeline: [
+    //                             {
+    //                                 $project: {
+    //                                     username: 1,
+    //                                     fullname: 1,
+    //                                     avatar: 1
+    //                                 }
+    //                             }
+    //                         ]
+    //                     }
+    //                 },
+    //                 {
+    //                     $addFields: { // [{}] -> {}
+    //                         owner: {
+    //                             $first: "$owner"
+    //                         }
+    //                     }
+    //                 }
+    //             ]
+    //         }
+    //     },
+    //     {
+    //         $addFields: {
+    //             likedVideo: {
+    //                 $first: "$likedVideo"
+    //             }
+    //         }
+    //     },
+    //     {
+    //         $match: {
+    //             likedVideo: { $exists: true }
+    //         }
+    //     }
+    // ])
 
     return res
         .status(200)
