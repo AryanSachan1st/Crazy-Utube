@@ -14,8 +14,7 @@ const videoSchema = new mongoose.Schema({
         required: true
     },
     description: {
-        type: String,
-        required: true
+        type: String
     },
     duration: {
         type: Number, // cloudinary url
@@ -31,7 +30,8 @@ const videoSchema = new mongoose.Schema({
     },
     owner: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User"
+        ref: "User",
+        required: true
     }
 }, {timestamps: true})
 
