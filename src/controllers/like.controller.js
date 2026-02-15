@@ -117,6 +117,33 @@ const toggleTweetLike = asyncHandler(async (req, res) => {
     )
 })
 
+/*
+THE REASON OF SECOND LOOKUP (JOIN) INSIDE THE PIPELINE IS- 
+Telling mongoDB: "Find the video which I liked, and before you bring it back to me, go inside that specific video, find its owner, and attach the owner details inside the video object."
+*/
+
+/*
+AGGREGATION PIPELINES USE CASES-
+YOU USE PIPELINES WHEN YOU NEED TO-
+
+1. Filter & Sort Advancedly: complex logic that simple queries can't handle.
+2. Reshape Data: Rename fields, hide fields, or calculate new fields (like fullName = firstName + lastName).
+3. Join Collections: Bring in data from other collections (Relational Database style) using $lookup.
+4. Analyze Data: Group data to calculate sums, averages, counts, etc. (e.g., "How many likes does each video have?").
+*/
+
+// NOTE: At each stage, the implementation performs an operation on the data and passes the result to the next stage.
+
+/*
+IN GENERAL USE OF PIPELINE- (those extra instructions are defined by pipelines)
+$lookup with pipeline: You ask a friend to go buy you a sandwich, but you give them a list of instructions: "No onions, extra cheese, and cut it in half." They perform these actions at the shop and bring you exactly what you want.
+*/
+
+/*
+PIPELINE V/S STAGE-
+Pipeline = The Whole Process (The entire Array [...])
+Stage = A Single Step (One Object { ... } inside that Array)
+*/
 const getLikedVideos = asyncHandler(async (req, res) => {
     const likedVideos = await Like.aggregate([
         {
@@ -124,7 +151,7 @@ const getLikedVideos = asyncHandler(async (req, res) => {
                 // 1. Filter likes by the current user's ID
                 likedBy: new mongoose.Types.ObjectId(req.user?._id),
                 // 2. Ensure we only get likes associated with videos (not comments or tweets)
-                //    'video' field must exist and not be null
+                //    'video' field ensures that we are only fetching video likes
                 video: { $exists: true, $ne: null }
             }
         },
@@ -143,7 +170,7 @@ const getLikedVideos = asyncHandler(async (req, res) => {
                             localField: "owner",
                             foreignField: "_id",
                             as: "owner",
-                            pipeline: [
+                            pipeline: [ // immediately filters only the required data before populating it to the "as" field
                                 {
                                     $project: {
                                         // 5. Select only specific fields for the owner
